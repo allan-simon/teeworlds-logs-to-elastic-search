@@ -9,11 +9,22 @@ from elasticsearch import helpers
 
 INDEX_NAME = 'logteeworlds'
 
+LEAVE_GAME_KILL_ID = "-3"
+
 WEAPON_ID_2_NAME = {
-    '3': 'bazooka',
-    '-3': 'leave_team',
-    '-2': 'console_kill',
+    '5': 'ninja',
+    '4': 'laser_rifle',
+    '3': 'grenade',
+    '2': 'shotgun',
+    '1': 'normal_gun',
+    '0': 'hammer',
+    # for example you fell down the map
+    # or walked in to lava
     '-1': 'the_map_killed_you',
+    # you leave the game or switched team
+    '-3': 'leave_team',
+    # using the console command
+    '-2': 'console_kill',
 }
 
 def extract_leave_event(log, timestamp):
@@ -69,13 +80,28 @@ def extract_pickup_event(log, timestamp):
     # the player part is `id:name`:w
     player_id, player_name = player_part.split(':', 1)
 
+    # checked in /src/game/generated/protocol.h for the value
+    # and /src/game/server/entities/pickup.cpp for the format
+    item_pickup_to_name = {
+        '0/0' : "health",
+        '1/0' : "armor",
+        '2/0' : "hammer", # should not be possible...
+        '2/1' : "normal_gun", # should not be possible...
+        '2/2' : "shotgun",
+        '2/3' : "grenade",
+        '2/4' : "laser_rifle",
+        '3/5' : "ninja",
+    }
+
     return {
         "_index": INDEX_NAME,
         "_type": 'pickup',
         'timestamp': timestamp*1000,
         'player_id': player_id,
         'player_name': player_name,
-        'item': item_part,
+        # we get a "human name" and display the "log name"
+        # as a fallback
+        'item': item_pickup_to_name.get(item_part, item_part),
     }
 
 def extract_kill_event(log, timestamp):
@@ -90,6 +116,11 @@ def extract_kill_event(log, timestamp):
 
     weapon_part, special_part = other_part.split(" special=")
 
+    is_suicide = (
+        killer_id == victim_id and
+        weapon_part != LEAVE_GAME_KILL_ID
+    )
+
     return {
         "_index": INDEX_NAME,
         "_type": 'kill',
@@ -98,9 +129,9 @@ def extract_kill_event(log, timestamp):
         'killer_name': killer_name,
         'victim_id': victim_id,
         'victim_name': victim_name,
-        'weapon': weapon_part,
+        'weapon': WEAPON_ID_2_NAME.get(weapon_part, weapon_part),
         'special': special_part,
-        'is_suicide': killer_id == victim_id,
+        'is_suicide': is_suicide,
     }
 
 def create_mapping(es_client):
