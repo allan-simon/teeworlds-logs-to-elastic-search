@@ -30,7 +30,6 @@ WEAPON_ID_2_NAME = {
 def extract_leave_event(log, timestamp):
     # looks like this:
     # leave player='0:nameless tee'
-    log = log.strip()
 
     player_part, _ = log[len("leave player='"):].split("'", 1)
 
@@ -49,7 +48,6 @@ def extract_leave_event(log, timestamp):
 def extract_team_join_event(log, timestamp):
     # looks like this:
     # team_join player='0:nameless tee' team=0
-    log = log.strip()
 
     # and the part about what has been picked
     player_part, team_part = log[len("team_join player='"):].split("' team=", 1)
@@ -70,7 +68,6 @@ def extract_team_join_event(log, timestamp):
 def extract_pickup_event(log, timestamp):
     # looks like this:
     # pickup player='4:Lior  nco' item=1/0
-    log = log.strip()
 
     # we remove the part pickup player='
     # which give us the part about the player who picked up something
@@ -106,7 +103,6 @@ def extract_pickup_event(log, timestamp):
 
 def extract_kill_event(log, timestamp):
     #kill killer='1:Alex' victim='1:Alex' weapon=-3 special=0
-    log = log.strip()
     killer_part, other_part = log[len("kill player='"):].split("' victim='", 1)
 
     killer_id, killer_name = killer_part.split(':', 1)
@@ -165,7 +161,12 @@ def create_mapping(es_client):
     )
 
 def main():
-    es_client = Elasticsearch(hosts=[os.getenv('ELASTIC_SEARCH_IP')])
+    es_ip = os.getenv('ELASTIC_SEARCH_IP')
+    if es_ip is None:
+        print("please set ELASTIC_SEARCH_IP env variable")
+        return
+
+    es_client = Elasticsearch(hosts=[es_ip])
     if not es_client.indices.exists(INDEX_NAME):
         es_client.indices.create(index=INDEX_NAME)
     create_mapping(es_client)
@@ -183,12 +184,14 @@ def main():
         line = sys.stdin.readline()
         if line is None:
             break
+        line = line.strip()
         timestamp = _extract_timestamp(line)
         log_type = _extract_log_type(line)
 
         # for the moment we ignore
         # all the non in-game logs
         if log_type != "game":
+            print("log_type not supported:", line)
             continue
         # extract the part after timestamp
         log = line.split(': ', 1)[1]
@@ -199,6 +202,7 @@ def main():
 
         if extractor is None:
             print("no extractor for type", event_type)
+            print("original log:", log)
             continue
 
         event = extractor(log, timestamp)
