@@ -64,6 +64,27 @@ def extract_team_join_event(log, timestamp):
         'player_name': player_name,
     }
 
+def extract_velocity_event(log, timestamp):
+    # looks like this:
+    # velocity player='0:nameless tee' value=0.001953
+    # Note: this log does not exists in the vanilla version
+
+    # and the part about what has been picked
+    player_part, velocity_part = log[len("velocity player='"):].split("' value=", 1)
+
+    # the player part is `id:name`
+    player_id, player_name = player_part.split(':', 1)
+
+    return {
+        "_index": INDEX_NAME,
+        "_type": 'velocity',
+        'timestamp': timestamp*1000,
+        'player_id': player_id,
+        'player_name': player_name,
+        'velocity': float(velocity_part),
+    }
+
+
 
 def extract_pickup_event(log, timestamp):
     # looks like this:
@@ -160,6 +181,19 @@ def create_mapping(es_client):
         }
     )
 
+    es_client.indices.put_mapping(
+        index=INDEX_NAME,
+        doc_type="velocity",
+        body={
+            "properties": {
+                "velocity": {"type": "float"},
+                "player_id": {"type": "keyword"},
+                "player_name": {"type": "keyword"},
+                "timestamp": {"type": "date"},
+            }
+        }
+    )
+
 def main():
     es_ip = os.getenv('ELASTIC_SEARCH_IP')
     if es_ip is None:
@@ -178,6 +212,7 @@ def main():
         'kill': extract_kill_event,
         'team_join': extract_team_join_event,
         'leave': extract_leave_event,
+        'velocity': extract_velocity_event,
     }
 
     while True:
